@@ -3,6 +3,7 @@ from git import Repo
 from fabric.api import  env, run, sudo, task, cd, prefix
 from fabric.operations import prompt
 from fabric.contrib.console import confirm
+from fabric.context_managers import shell_env
 from contextlib import contextmanager
 
 import os
@@ -30,7 +31,7 @@ def build_app():
     _deploy_file_server()
 
     if confirm("Deploy web app locally?"):
-        _deploy_web_app()
+        _deploy_web_app(init_db=True)
 
 @task
 def clone_repos():
@@ -80,16 +81,20 @@ def _web_app_venv():
         with prefix(env.web_app_activate):
             yield
 
-def _deploy_web_app():
+def _deploy_web_app(init_db=True):
     print ("Deploying Web App")
     with _web_app_venv():
         run("pip install -r requirements.txt")
-        run("export DJANGO_SETTINGS_MODULE=easyNAS.settings.dev")
-        run("python manage.py runserver 0.0.0.0:8000")
+        with shell_env(DJANGO_SETTINGS_MODULE="easyNAS.settings.dev"):
+            if(init_db):
+                run("python manage.py migrate")
+                run("python manage.py createsuperuser")
+            
+            run("gunicorn -b localhost:8000 -D easyNAS.wsgi")
 
 def _deploy_file_server():
     print ("Deploying Web App")
     with _file_server_venv():
         run("pip install -r requirements.txt")
-        run("python runserver.py")
-        # Still needs to run in the background :(
+        run('python -c "from nas_server.tests.test_utils import *; rebuild_test_tree()"')
+        run("gunicorn -b localhost:5000 -D runserver:app")
