@@ -35,9 +35,11 @@ def build_app():
 
 @task
 def clone_repos():
+    run("rm -rf %s" % env.web_app_directory)
     run("mkdir %s" % env.web_app_directory)
     Repo.clone_from(WEB_APP_GIT_URL, env.web_app_directory)
 
+    run("rm -rf %s" % env.file_server_directory)
     run("mkdir %s" % env.file_server_directory)
     Repo.clone_from(FILE_SERVER_GIT_URL, env.file_server_directory)
 
@@ -56,7 +58,12 @@ def generate_configs():
     
     #prompt for any additional config file info and store it
     host_ip = socket.gethostbyname(socket.gethostname())
-    api_url = 'FILE_SERVER_URL="http://%s:5000/nas_server/api/v1.0"' % host_ip
+    api_url = 'FILE_SERVER_BASE_URL="http://%s:5000/nas_server/api/v1.0"' % host_ip
+
+    files_dir = prompt("Please enter the location of the shared folder")
+    if files_dir:
+        files_dir = 'FILES_DIRECTORY="%s"' % files_dir
+        run("echo '%s' >> %s" % (files_dir, os.path.join(env.file_server_directory, "nas_server/config.py")))
 
     run("echo '%s' >> %s" % (api_url, os.path.join(env.web_app_directory, "easyNAS/settings/common.py")))
 
@@ -90,11 +97,31 @@ def _deploy_web_app(init_db=True):
                 run("python manage.py migrate")
                 run("python manage.py createsuperuser")
             
-            run("gunicorn -b localhost:8000 -D easyNAS.wsgi")
+            run("gunicorn -b 0.0.0.0:8000 -D easyNAS.wsgi")
 
 def _deploy_file_server():
     print ("Deploying Web App")
     with _file_server_venv():
         run("pip install -r requirements.txt")
         run('python -c "from nas_server.tests.test_utils import *; rebuild_test_tree()"')
-        run("gunicorn -b localhost:5000 -D runserver:app")
+        run("gunicorn -b 0.0.0.0:5000 -D runserver:app")
+
+def kill(app_name="all"):
+    if app_name == "all":
+        # kill both
+        pass
+    elif app_name == "web_app":
+        # kill web app only
+        pass
+    elif app_name == "file_server":
+        # kill file server only
+        pass
+
+def status():
+    print "Status of apps running"
+
+
+
+
+
+
